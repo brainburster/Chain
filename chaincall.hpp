@@ -1,3 +1,6 @@
+#ifndef _CHAINCALL_HPP
+#define _CHAINCALL_HPP
+
 #include <tuple>
 
 namespace chaincall
@@ -92,3 +95,5 @@ namespace chaincall
     }
 
 } // namespace chaincall
+
+#endif // _CHAINCALL_HPP
