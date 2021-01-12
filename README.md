@@ -2,7 +2,7 @@
 
 ## Usage
 
-''' cpp
+```cpp
 
     #include "chain.hpp"
 
@@ -20,4 +20,4 @@
     
     ...
     
-'''
+```
