@@ -55,16 +55,16 @@ namespace chaincall
 		};
 
 		template <typename RHS, typename ParamType>
-		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<!std::is_void<decltype(rhs(lhs.value))>::value, Chain<decltype(rhs(lhs.value))>>::type
+		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<!std::is_void<decltype(rhs(std::move(lhs.value)))>::value, Chain<decltype(rhs(std::move(lhs.value)))>>::type
 		{
-			auto temp = std::forward<RHS>(rhs)(std::move(lhs.value));
+			auto temp = std::forward<RHS>(rhs)(reinterpret_cast<decltype(lhs.value) &&>(*reinterpret_cast<decltype(lhs.value) *>(&lhs)));
 			return std::move(*reinterpret_cast<Chain<decltype(temp)> *>(&temp));
 		};
 
 		template <typename RHS, typename ParamType>
-		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<std::is_void<decltype(rhs(lhs.value))>::value, Chain<void>>::type
+		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<std::is_void<decltype(rhs(std::move(lhs.value)))>::value, Chain<void>>::type
 		{
-			std::forward<RHS>(rhs)(std::move(lhs.value));
+			std::forward<RHS>(rhs)(reinterpret_cast<decltype(lhs.value) &&>(*reinterpret_cast<decltype(lhs.value) *>(&lhs)));
 			return Chain<void>::getInstance();
 		};
 
@@ -90,7 +90,7 @@ namespace chaincall
 		template <typename RHS, typename ParamType>
 		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<std::is_void<decltype(_apply(rhs, std::move(lhs.value)))>::value, Chain<void>>::type
 		{
-			_apply(std::forward<RHS>(rhs), std::move(lhs.value));
+			_apply(std::forward<RHS>(rhs), reinterpret_cast<decltype(lhs.value) &&>(*reinterpret_cast<decltype(lhs.value) *>(&lhs)));
 			return Chain<void>::getInstance();
 		};
 	} // namespace impl
