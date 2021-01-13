@@ -2,98 +2,116 @@
 #define _CHAINCALL_HPP
 
 #include <tuple>
+#include <type_traits>
 
 namespace chaincall
 {
-    namespace impl
-    {
-        template <size_t N>
-        struct Apply
-        {
-            template <typename F, typename T, typename... A>
-            static inline auto apply(F &&f, T &&t, A &&... a)
-                -> decltype(Apply<N - 1>::apply(
-                    ::std::forward<F>(f), ::std::forward<T>(t),
-                    ::std::get<N - 1>(::std::forward<T>(t)),
-                    ::std::forward<A>(a)...))
-            {
-                return Apply<N - 1>::apply(::std::forward<F>(f),
-                                           ::std::forward<T>(t),
-                                           ::std::get<N - 1>(::std::forward<T>(t)),
-                                           ::std::forward<A>(a)...);
-            }
-        };
+	namespace impl
+	{
+		namespace cpp11
+		{
+			template <size_t...>
+			struct index_sequence
+			{
+			};
 
-        template <>
-        struct Apply<0>
-        {
-            template <typename F, typename T, typename... A>
-            static inline auto apply(F &&f, T &&, A &&... a)
-                -> decltype(::std::forward<F>(f)(::std::forward<A>(a)...))
-            {
-                return ::std::forward<F>(f)(::std::forward<A>(a)...);
-            }
-        };
+			template <size_t N, size_t... M>
+			struct make_index_sequence : make_index_sequence<N - 1, N - 1, M...>
+			{
+			};
 
-        template <typename F, typename T>
-        inline auto apply(F &&f, T &&t)
-            -> decltype(Apply<::std::tuple_size<
-                            typename ::std::decay<T>::type>::value>::apply(::std::forward<F>(f),
-                                                                           ::std::forward<T>(t)))
-        {
-            return Apply<::std::tuple_size<
-                typename ::std::decay<T>::type>::value>::apply(::std::forward<F>(f),
-                                                               ::std::forward<T>(t));
-        }
+			template <size_t... M>
+			struct make_index_sequence<0, M...> : index_sequence<M...>
+			{
+			};
+		} // namespace cpp11
 
-        template <typename ValueType>
-        struct Chain
-        {
-            ValueType value;
-        };
+		template <typename F, typename T, size_t... I>
+		auto _apply_impl(F &&f, T &&t, cpp11::index_sequence<I...>) -> decltype(f(std::get<I>(std::forward<T>(t))...))
+		{
+			return f(std::get<I>(std::forward<T>(t))...);
+		}
 
-        template <>
-        struct Chain<void>
-        {
-        };
+		template <typename F, typename... Args, typename Indices = cpp11::make_index_sequence<sizeof...(Args)>>
+		auto _apply(F &&f, std::tuple<Args...> &&t) -> decltype(_apply_impl(std::forward<F>(f), std::forward<std::tuple<Args...>>(t), Indices()))
+		{
+			return _apply_impl(std::forward<F>(f), std::forward<std::tuple<Args...>>(t), Indices());
+		}
 
-        template <typename RHS, typename ParamType>
-        inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> Chain<decltype(rhs(lhs.value))>
-        {
-            return {std::forward<RHS>(rhs)(std::move(lhs.value))};
-        };
+		template <typename ValueType>
+		struct Chain
+		{
+			ValueType value;
+		};
 
-        template <typename RHS, typename ParamType>
-        inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> Chain<decltype(rhs())>
-        {
-            return {std::forward<RHS>(rhs)()};
-        };
+		template <>
+		struct Chain<void>
+		{
+			static Chain<void> &&getInstance()
+			{
+				static Chain<void> instance{};
+				return std::move(instance);
+			}
+		};
 
-        template <typename RHS, typename ParamType, size_t... n>
-        inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> Chain<decltype(apply(rhs, lhs.value))>
-        {
-            return {apply(std::forward<RHS>(rhs), std::move(lhs.value))};
-        };
-    } // namespace impl
-    
-    template <typename T>
-    impl::Chain<T> chain(T &&value)
-    {
-        //return {static_cast<T &&>(value)};
-        return *reinterpret_cast<impl::Chain<T>*>(&value);
-    };
+		template <typename RHS, typename ParamType>
+		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<!std::is_void<decltype(rhs(lhs.value))>::value, Chain<decltype(rhs(lhs.value))>>::type
+		{
+			auto temp = std::forward<RHS>(rhs)(std::move(lhs.value));
+			return std::move(*reinterpret_cast<Chain<decltype(temp)> *>(&temp));
+		};
 
-    template <typename... T>
-    impl::Chain<std::tuple<T...>> chain(T &&... value)
-    {
-        return {std::forward_as_tuple(std::forward<T>(value)...)};
-    };
+		template <typename RHS, typename ParamType>
+		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<std::is_void<decltype(rhs(lhs.value))>::value, Chain<void>>::type
+		{
+			std::forward<RHS>(rhs)(std::move(lhs.value));
+			return Chain<void>::getInstance();
+		};
 
-    impl::Chain<void> chain()
-    {
-        return {};
-    }
+		template <typename RHS, typename ParamType>
+		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<!std::is_void<decltype(rhs())>::value, Chain<decltype(rhs())>>::type
+		{
+			auto temp = std::forward<RHS>(rhs)();
+			return std::move(*reinterpret_cast<Chain<decltype(temp)> *>(&temp));
+		};
+		template <typename RHS, typename ParamType>
+		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<std::is_void<decltype(rhs())>::value, Chain<void>>::type
+		{
+			std::forward<RHS>(rhs)();
+			return Chain<void>::getInstance();
+		};
 
+		template <typename RHS, typename ParamType>
+		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<!std::is_void<decltype(_apply(rhs, std::move(lhs.value)))>::value, Chain<decltype(_apply(rhs, std::move(lhs.value)))>>::type
+		{
+			auto temp = _apply(std::forward<RHS>(rhs), reinterpret_cast<decltype(lhs.value) &&>(*reinterpret_cast<decltype(lhs.value) *>(&lhs)));
+			return std::move(*reinterpret_cast<Chain<decltype(temp)> *>(&temp));
+		};
+		template <typename RHS, typename ParamType>
+		inline auto operator>>(Chain<ParamType> &&lhs, RHS &&rhs) -> typename std::enable_if<std::is_void<decltype(_apply(rhs, std::move(lhs.value)))>::value, Chain<void>>::type
+		{
+			_apply(std::forward<RHS>(rhs), std::move(lhs.value));
+			return Chain<void>::getInstance();
+		};
+	} // namespace impl
+
+	template <typename T>
+	impl::Chain<T> chain(T &&value)
+	{
+		//return {static_cast<T &&>(value)};
+		return *reinterpret_cast<impl::Chain<T> *>(&value);
+	};
+
+	template <typename... T>
+	impl::Chain<std::tuple<T...>> chain(T &&... value)
+	{
+		return {std::forward_as_tuple(std::forward<T>(value)...)};
+	};
+
+	impl::Chain<void> chain()
+	{
+		return {};
+	}
 } // namespace chaincall
 
 #endif // _CHAINCALL_HPP
