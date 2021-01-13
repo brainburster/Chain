@@ -1,17 +1,12 @@
 #include "chaincall.hpp"
 #include <iostream>
 
-int _42()
-{
-    return 42;
-}
-
 int add_1(int v)
 {
     return v + 1;
 }
 
-int power(int v)
+int power_2(int v)
 {
     return v * v;
 }
@@ -34,10 +29,10 @@ std::tuple<int,int> tuple_1_2(){
 int main(int argc, const char** argv) {
     using namespace std;
 
-    auto v1 = chaincall::chain() >> _42 >> add_1 >> power >> div_2;
-    auto v2 = chaincall::chain(2) >> add_1 >> power >> div_2;
-    auto v3 = chaincall::chain(1,2) >> add >> power >> div_2;
-    auto v4 = chaincall::chain() >> tuple_1_2 >> add >> power >> div_2;
+    auto v1 = chaincall::chain() >> []{return 42;} >> add_1 >> power_2 >> div_2;
+    auto v2 = chaincall::chain(2) >> add_1 >> power_2 >> div_2;
+    auto v3 = chaincall::chain(1,2) >> [](auto a,auto b){return a+b;} >> power_2 >> div_2;
+    auto v4 = chaincall::chain() >> [] { return make_tuple(3, 7); } >> [](auto a, auto b) { return a * b; } >> power_2 >> div_2;
 
     cout << v1.value << endl;
     cout << v2.value << endl;
