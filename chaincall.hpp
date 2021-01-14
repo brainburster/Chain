@@ -47,10 +47,10 @@ namespace chaincall
 		template <>
 		struct Chain<void>
 		{
-			static Chain<void>&& getInstance()
+			static Chain<void> getInstance()
 			{
 				static Chain<void> instance{};
-				return std::move(instance);
+				return instance;
 			}
 		};
 
@@ -96,19 +96,19 @@ namespace chaincall
 	} // namespace impl
 
 	template <typename T>
-	impl::Chain<T> chain(T&& value)
+	inline impl::Chain<T> chain(T&& value)
 	{
 		//return {static_cast<T &&>(value)};
 		return *reinterpret_cast<impl::Chain<T> *>(&value);
 	};
 
 	template <typename... T>
-	impl::Chain<std::tuple<T...>> chain(T &&... value)
+	inline impl::Chain<std::tuple<T...>> chain(T &&... value)
 	{
 		return { std::forward_as_tuple(std::forward<T>(value)...) };
 	};
 
-	impl::Chain<void> chain()
+	inline impl::Chain<void> chain()
 	{
 		return  impl::Chain<void>::getInstance();
 	}
