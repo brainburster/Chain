@@ -27,13 +27,13 @@ namespace chaincall
 		} // namespace cpp11
 
 		template <typename F, typename T, size_t... I>
-		auto _apply_impl(F&& f, T&& t, cpp11::index_sequence<I...>) -> decltype(f(std::get<I>(std::forward<T>(t))...))
+		inline auto _apply_impl(F&& f, T&& t, cpp11::index_sequence<I...>) -> decltype(f(std::get<I>(std::forward<T>(t))...))
 		{
 			return f(std::get<I>(std::forward<T>(t))...);
 		}
 
 		template <typename F, typename... Args, typename Indices = cpp11::make_index_sequence<sizeof...(Args)>>
-		auto _apply(F&& f, std::tuple<Args...>&& t) -> decltype(_apply_impl(std::forward<F>(f), std::forward<std::tuple<Args...>>(t), Indices()))
+		inline auto _apply(F&& f, std::tuple<Args...>&& t) -> decltype(_apply_impl(std::forward<F>(f), std::forward<std::tuple<Args...>>(t), Indices()))
 		{
 			return _apply_impl(std::forward<F>(f), std::forward<std::tuple<Args...>>(t), Indices());
 		}
