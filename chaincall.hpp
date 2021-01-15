@@ -97,7 +97,7 @@ namespace chaincall
 	};
 
 	template <typename... T>
-	inline impl::Chain<std::tuple<T...>> chain(T &&... value)
+	inline impl::Chain<std::tuple<T...>> chain(T &&...value)
 	{
 		return {std::forward_as_tuple(std::forward<T>(value)...)};
 	};
@@ -109,11 +109,25 @@ namespace chaincall
 
 	namespace impl
 	{
+		// 	template <typename Head, typename... Args>
+		// 	struct ArgsHelper
+		// 	{
+		// 		using head = Head;
+		// 		using tail = typename ArgsHelper<Args...>::tail;
+		// 	};
+
+		// 	template<typename Tail>
+		// 	struct ArgsHelper<Tail>
+		// 	{
+		// 		using head = Tail;
+		// 		using tail = Tail;
+		// 	};
+
 		template <typename... FuncList>
 		struct Pipe_impl
 		{
 			std::tuple<FuncList...> funcs;
-			Pipe_impl(FuncList &&... fl) : funcs{std::forward<FuncList>(fl)...} {}
+			Pipe_impl(FuncList &&...fl) : funcs{std::forward<FuncList>(fl)...} {}
 
 			template <typename T1, typename T2>
 			inline auto __pipe_impl(T1 &&t1, T2 &&t2) -> decltype(std::forward<T1>(t1) >> std::forward<T2>(t2))
@@ -122,7 +136,7 @@ namespace chaincall
 			}
 
 			template <typename T1, typename T2, typename... Args>
-			inline auto __pipe_impl(T1 &&t1, T2 &&t2, Args &&... args) -> decltype(__pipe_impl(std::forward<T1>(t1) >> std::forward<T2>(t2), std::forward<Args>(args)...))
+			inline auto __pipe_impl(T1 &&t1, T2 &&t2, Args &&...args) -> decltype(__pipe_impl(std::forward<T1>(t1) >> std::forward<T2>(t2), std::forward<Args>(args)...))
 			{
 				return __pipe_impl(std::forward<T1>(t1) >> std::forward<T2>(t2), std::forward<Args>(args)...);
 			}
@@ -135,23 +149,34 @@ namespace chaincall
 			}
 
 			template <typename... Args, typename Indices = impl::cpp11::make_index_sequence<sizeof...(FuncList)>>
-			inline auto operator()(Args &&... args) -> decltype(_pipe_impl(chain(std::forward<Args>(args)...), Indices{}))
+			inline auto operator()(Args &&...args) -> decltype(_pipe_impl(chain(std::forward<Args>(args)...), Indices{}))
 			{
 				return _pipe_impl(chain(std::forward<Args>(args)...), Indices{});
 			}
 		};
+
+		template <typename RHS, typename... FuncList>
+		auto operator<<(Pipe_impl<FuncList...> &&p, RHS &&f) -> Pipe_impl<typename std::decay<FuncList>::type..., RHS>
+		{
+			auto funcs = std::tuple_cat(std::move(p.funcs), std::forward_as_tuple(std::forward<RHS>(f)));
+			return std::move(*reinterpret_cast<Pipe_impl<typename std::decay<FuncList>::type..., RHS> *>(&funcs));
+		}
 		template <>
 		struct Pipe_impl<>
 		{
+			std::tuple<> funcs;
 		};
 	} // namespace impl
 	template <typename... FuncList>
-	inline auto pipe(FuncList &&... fl) -> decltype(impl::Pipe_impl<FuncList...>{std::forward<FuncList>(fl)...})
+	inline auto pipe(FuncList &&...fl) -> decltype(impl::Pipe_impl<FuncList...>{std::forward<FuncList>(fl)...})
 	{
 		return impl::Pipe_impl<FuncList...>{std::forward<FuncList>(fl)...};
 	}
 
-	inline void pipe() {}
+	inline impl::Pipe_impl<> pipe()
+	{
+		return impl::Pipe_impl<>{};
+	}
 } // namespace chaincall
 
 #endif // _CHAINCALL_HPP

@@ -20,10 +20,11 @@
     cout << v4.value << endl; //(3*7)**2/2 = 220
 
     //pipe
-    auto composed_func = chaincall::pipe([](int a, int b) { return a * b; }, power_2, div_2);
-    auto v5 = composed_func(2, 7);
-    
-    cout << v5.value << endl; //(2*7)**2/2 = 98
+    auto composed_func1 = chaincall::pipe([](int a, int b) { return a * b; }, power_2, div_2);
+    auto composed_func2 = chaincall::pipe() << add << power_2 << div_2;
+
+    cout << composed_func1(2, 7).value << endl; //(2*7)**2/2 = 98
+    cout << composed_func2(2, 7).value << endl; //(2+7)**2/2 = 40
     
     ...
     

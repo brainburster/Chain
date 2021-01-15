@@ -30,6 +30,7 @@ int main(int argc, const char **argv)
 {
     using namespace std;
 
+    //chain
     auto v1 = chaincall::chain() >> [] { return 42; } >> add_1 >> power_2 >> div_2;
     auto v2 = chaincall::chain(2) >> add_1 >> power_2 >> div_2;
     auto v3 = chaincall::chain(1, 2) >> [](int a, int b) { return a + b; } >> power_2 >> div_2;
@@ -40,10 +41,13 @@ int main(int argc, const char **argv)
     cout << v3.value << endl; //(1+2)**2/2 = 4
     cout << v4.value << endl; //(3*7)**2/2 = 220
 
+    //pipe
+    auto composed_func1 = chaincall::pipe([](int a, int b) { return a * b; }, power_2, div_2);
+    auto composed_func2 = chaincall::pipe() << add << power_2 << div_2;
 
-    auto composed_func = chaincall::pipe([](int a, int b) { return a * b; }, power_2, div_2);
-
-    cout << composed_func(2, 7).value << endl; //(2*7)**2/2 = 98
+    cout << composed_func1(2, 7).value << endl; //(2*7)**2/2 = 98
+    cout << composed_func2(2, 7).value << endl; //(2+7)**2/2 = 40
+    
 
     return 0;
 }
