@@ -22,15 +22,15 @@ namespace chaincall
 			using tail = Tail;
 		};
 
-		template <typename T, typename R, typename... Args>
-		R ReturnType(R (T::*f)(Args...));
+
 		template <typename R, typename... Args>
 		R ReturnType(R (*f)(Args...));
-		template <typename T, typename R, typename... Args>
-		std::tuple<Args...> ReturnArgs(R (T::*f)(Args...));
 		template <typename R, typename... Args>
 		std::tuple<Args...> ReturnArgs(R (*f)(Args...));
-
+		template <typename T, typename R, typename... Args>
+		R ReturnType(R (T::*f)(Args...));
+		template <typename T, typename R, typename... Args>
+		std::tuple<Args...> ReturnArgs(R (T::*f)(Args...));
 		template <typename T, typename R, typename... Args>
 		R ReturnType(R (T::*)(Args...) const);
 		template <typename T, typename R, typename... Args>
@@ -46,10 +46,23 @@ namespace chaincall
 		};
 
 		template <typename Callable>
-		struct CallableHelper<Callable, typename std::enable_if<std::is_function<typename std::remove_reference<typename std::remove_pointer<Callable>::type>::type>::value, void>::type>
+		struct CallableHelper<Callable,
+		 typename std::enable_if<std::is_function<typename std::remove_pointer<Callable>::type>::value, void>::type>
 		{
-			using return_type = decltype(ReturnType(std::declval<Callable>));
-			using args_tuple_type = decltype(ReturnArgs(std::declval<Callable>));
+			using return_type = decltype(ReturnType(std::declval<typename std::remove_pointer<Callable>::type>()));
+			using args_tuple_type = decltype(ReturnArgs(std::declval<typename std::remove_pointer<Callable>::type>()));
+			enum
+			{
+				is_callable = true
+			};
+		};
+		template <typename Callable>
+		struct CallableHelper<Callable,
+		 typename std::enable_if<!std::is_function<typename std::remove_pointer<Callable>::type>::value&&
+		 std::is_function<typename std::remove_reference<Callable>::type>::value, void>::type>
+		{
+			using return_type = decltype(ReturnType(std::declval<typename std::remove_reference<Callable>::type>()));
+			using args_tuple_type =  decltype(ReturnArgs(std::declval<typename std::remove_reference<Callable>::type>()));
 			enum
 			{
 				is_callable = true
@@ -190,7 +203,53 @@ namespace chaincall
 	namespace impl
 	{
 		template <typename... FuncList>
-		struct Pipe_impl
+		struct ChainAbleHelper{using Enable = void;};
+
+		template <>
+		struct ChainAbleHelper<>{
+			using Enable = void;
+		};
+
+		template <typename A>
+		struct ChainAbleHelper<A>
+		{
+			using RetA = typename CallableHelper<A>::return_type;
+			using Enable = RetA;
+			enum
+			{
+				is_chainable = true
+			};
+		};
+
+		// c++ 17
+		// template <typename Chain, typename... FuncList>
+		// inline auto _chain_able_helper_impl(Chain&& c,FuncList&&...fl) -> decltype((std::forward<Chain>(c) >> ... >> std::forward<FuncList>(fl)));
+
+		template <typename T1, typename T2>
+		inline auto __chain_able_helper_impl(T1 &&t1, T2 &&t2) -> decltype(std::forward<T1>(t1) >> std::forward<T2>(t2));
+		template <typename T1, typename T2, typename... Args>
+		inline auto __chain_able_helper_impl(T1 &&t1, T2 &&t2, Args &&...args) -> decltype(__chain_able_helper_impl(std::forward<T1>(t1) >> std::forward<T2>(t2), std::forward<Args>(args)...));
+		template <typename Chain, typename... FuncList>
+		inline auto _chain_able_helper_impl(Chain &&c, FuncList &&...fl) -> decltype(__chain_able_helper_impl(std::forward<Chain>(c), std::forward<FuncList>(fl)...));
+
+		template <typename A, typename... FuncList>
+		struct ChainAbleHelper<A, FuncList...>
+		{
+			using RetA = typename CallableHelper<A>::return_type;
+			using Enable = decltype(_chain_able_helper_impl(chain(std::declval<RetA>()), std::declval<FuncList>()...));
+			template<typename T>
+			static char test(T* t);
+			template<typename T>
+			static long long test(...);
+			enum
+			{
+				is_chainable = sizeof(test<Enable>(nullptr) == sizeof(char))
+			};
+		};
+		
+		struct EmptyType{};
+		template <typename... FuncList>
+		struct Pipe_impl : std::enable_if<impl::ChainAbleHelper<FuncList...>::is_chainable, EmptyType>::type
 		{
 			std::tuple<FuncList...> funcs;
 			Pipe_impl(FuncList &&...fl) : funcs{std::forward<FuncList>(fl)...} {}
@@ -228,7 +287,7 @@ namespace chaincall
 		};
 
 		template <typename RHS>
-		auto operator<<(Pipe_impl<> &&p, RHS &&f) -> typename std::enable_if<
+		inline auto operator<<(Pipe_impl<> &&p, RHS &&f) -> typename std::enable_if<
 			impl::CallableHelper<RHS>::is_callable,
 			Pipe_impl<RHS>>::type
 		{
@@ -237,20 +296,20 @@ namespace chaincall
 		}
 
 		template <typename RHS, typename... FuncList>
-		auto operator<<(Pipe_impl<FuncList...> &&p, RHS &&f) -> typename std::enable_if<
+		inline auto operator<<(Pipe_impl<FuncList...> &&p, RHS &&f) -> typename std::enable_if<
 			impl::IsAllTrue<impl::CallableHelper<FuncList>::is_callable...>::value &&
-				impl::CallableHelper<RHS>::is_callable,
-			Pipe_impl<typename std::decay<FuncList>::type..., RHS>>::type
+			impl::CallableHelper<RHS>::is_callable &&
+			impl::ChainAbleHelper<typename ArgsHelper<FuncList...>::tail, RHS>::is_chainable,
+			Pipe_impl<FuncList..., RHS>>::type
 		{
 			auto funcs = std::tuple_cat(std::move(p.funcs), std::forward_as_tuple(std::forward<RHS>(f)));
-			return std::move(*reinterpret_cast<Pipe_impl<typename std::decay<FuncList>::type..., RHS> *>(&funcs));
+			return std::move(*reinterpret_cast<Pipe_impl<FuncList..., RHS> *>(&funcs));
 		}
 	} // namespace impl
 
-	template <typename... FuncList>
+	template <typename... FuncList, typename Enable = typename impl::ChainAbleHelper<FuncList...>::Enable>
 	inline auto pipe(FuncList &&...fl) ->
-		typename std::enable_if<
-			impl::IsAllTrue<impl::CallableHelper<FuncList>::is_callable...>::value,
+		typename std::enable_if< impl::IsAllTrue<impl::CallableHelper<FuncList>::is_callable...>::value,
 			decltype(impl::Pipe_impl<FuncList...>{std::forward<FuncList>(fl)...})>::type
 	{
 		return impl::Pipe_impl<FuncList...>{std::forward<FuncList>(fl)...};
