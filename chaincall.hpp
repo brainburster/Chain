@@ -6,7 +6,7 @@
 
 namespace chaincall
 {
-	namespace impl
+	namespace helper
 	{
 		template <typename Head, typename... Args>
 		struct ArgsHelper
@@ -59,7 +59,8 @@ namespace chaincall
 		template <typename Callable>
 		struct CallableHelper<Callable,
 			typename std::enable_if<!std::is_function<typename std::remove_pointer<Callable>::type>::value&&
-			std::is_function<typename std::remove_reference<Callable>::type>::value, void>::type>
+			std::is_function<typename std::remove_reference<Callable>::type>::value,
+			void>::type>
 		{
 			using return_type = decltype(ReturnType(std::declval<typename std::remove_reference<Callable>::type>()));
 			using args_tuple_type = decltype(ReturnArgs(std::declval<typename std::remove_reference<Callable>::type>()));
@@ -144,7 +145,9 @@ namespace chaincall
 		{
 			return _apply_impl(std::forward<F>(f), std::forward<std::tuple<Args...>>(t), Indices{});
 		}
-
+	} // namespace helper
+	namespace impl
+	{
 		template <typename ValueType>
 		struct Chain
 		{
@@ -184,15 +187,15 @@ namespace chaincall
 		};
 
 		template <typename RHS, typename ParamType>
-		inline auto operator>>(Chain<ParamType>&& lhs, RHS&& rhs) -> typename std::enable_if<!std::is_void<decltype(_apply(rhs, std::move(lhs.value)))>::value, Chain<decltype(_apply(rhs, std::move(lhs.value)))>>::type
+		inline auto operator>>(Chain<ParamType>&& lhs, RHS&& rhs) -> typename std::enable_if<!std::is_void<decltype(helper::_apply(rhs, std::move(lhs.value)))>::value, Chain<decltype(helper::_apply(rhs, std::move(lhs.value)))>>::type
 		{
-			auto temp = _apply(std::forward<RHS>(rhs), reinterpret_cast<typename std::decay<decltype(lhs.value)>::type&&>(*reinterpret_cast<typename std::decay<decltype(lhs.value)>::type*>(&lhs)));
+			auto temp = helper::_apply(std::forward<RHS>(rhs), reinterpret_cast<typename std::decay<decltype(lhs.value)>::type&&>(*reinterpret_cast<typename std::decay<decltype(lhs.value)>::type*>(&lhs)));
 			return std::move(*reinterpret_cast<Chain<decltype(temp)> *>(&temp));
 		};
 		template <typename RHS, typename ParamType>
-		inline auto operator>>(Chain<ParamType>&& lhs, RHS&& rhs) -> typename std::enable_if<std::is_void<decltype(_apply(rhs, std::move(lhs.value)))>::value, Chain<void>>::type
+		inline auto operator>>(Chain<ParamType>&& lhs, RHS&& rhs) -> typename std::enable_if<std::is_void<decltype(helper::_apply(rhs, std::move(lhs.value)))>::value, Chain<void>>::type
 		{
-			_apply(std::forward<RHS>(rhs), reinterpret_cast<typename std::decay<decltype(lhs.value)>::type&&>(*reinterpret_cast<typename std::decay<decltype(lhs.value)>::type*>(&lhs)));
+			helper::_apply(std::forward<RHS>(rhs), reinterpret_cast<typename std::decay<decltype(lhs.value)>::type&&>(*reinterpret_cast<typename std::decay<decltype(lhs.value)>::type*>(&lhs)));
 			return Chain<void>{};
 		};
 	} // namespace impl
@@ -214,20 +217,24 @@ namespace chaincall
 		return impl::Chain<void>{};
 	}
 
-	namespace impl
+	namespace helper
 	{
 		template <typename... FuncList>
-		struct ChainAbleHelper { using Enable = void; };
+		struct ChainAbleHelper
+		{
+			using Enable = void;
+		};
 
 		template <>
-		struct ChainAbleHelper<> {
+		struct ChainAbleHelper<>
+		{
 			using Enable = void;
 		};
 
 		template <typename A>
 		struct ChainAbleHelper<A>
 		{
-			using RetA = typename CallableHelper<A>::return_type;
+			using RetA = typename helper::CallableHelper<A>::return_type;
 			using Enable = RetA;
 			enum
 			{
@@ -249,21 +256,23 @@ namespace chaincall
 		template <typename A, typename... FuncList>
 		struct ChainAbleHelper<A, FuncList...>
 		{
-			using RetA = typename CallableHelper<A>::return_type;
+			using RetA = typename helper::CallableHelper<A>::return_type;
 			using Enable = decltype(_chain_able_helper_impl(chain(std::declval<RetA>()), std::declval<FuncList>()...));
-			template<typename T>
+			template <typename T>
 			static char test(T* t);
-			template<typename T>
+			template <typename T>
 			static long long test(...);
 			enum
 			{
 				is_chainable = sizeof(test<Enable>(nullptr) == sizeof(char))
 			};
 		};
+	} // namespace helper
 
-		struct EmptyType {};
+	namespace impl
+	{
 		template <typename... FuncList>
-		struct Pipe_impl : std::enable_if<impl::ChainAbleHelper<FuncList...>::is_chainable, EmptyType>::type
+		struct Pipe_impl : std::enable_if<helper::ChainAbleHelper<FuncList...>::is_chainable, Pipe_impl<>>::type
 		{
 			std::tuple<FuncList...> funcs;
 			Pipe_impl(FuncList &&...fl) : funcs{ std::forward<FuncList>(fl)... } {}
@@ -281,13 +290,13 @@ namespace chaincall
 			}
 
 			template <typename CHAIN, size_t... I>
-			inline auto _pipe_impl(CHAIN&& t1, impl::cpp11::index_sequence<I...>) -> decltype(__pipe_impl(std::forward<CHAIN>(t1), std::get<I>(funcs)...))
+			inline auto _pipe_impl(CHAIN&& t1, helper::cpp11::index_sequence<I...>) -> decltype(__pipe_impl(std::forward<CHAIN>(t1), std::get<I>(funcs)...))
 			{
 				//return (std::forward<CHAIN>(t1) >> ... >> std::get<I>(funcs)); //c++17
 				return __pipe_impl(std::forward<CHAIN>(t1), std::get<I>(funcs)...);
 			}
 
-			template <typename... Args, typename Indices = impl::cpp11::make_index_sequence<sizeof...(FuncList)>>
+			template <typename... Args, typename Indices = helper::cpp11::make_index_sequence<sizeof...(FuncList)>>
 			inline auto operator()(Args &&...args) -> decltype(_pipe_impl(chain(std::forward<Args>(args)...), Indices{}))
 			{
 				return _pipe_impl(chain(std::forward<Args>(args)...), Indices{});
@@ -297,12 +306,12 @@ namespace chaincall
 		template <>
 		struct Pipe_impl<>
 		{
-			std::tuple<> funcs;
+			//std::tuple<> funcs;
 		};
 
 		template <typename RHS>
 		inline auto operator>>(Pipe_impl<>&& p, RHS&& f) -> typename std::enable_if<
-			impl::CallableHelper<RHS>::is_callable,
+			helper::CallableHelper<RHS>::is_callable,
 			Pipe_impl<RHS>>::type
 		{
 			auto wraped_func = std::forward_as_tuple(std::forward<RHS>(f));
@@ -311,9 +320,9 @@ namespace chaincall
 
 			template <typename RHS, typename... FuncList>
 		inline auto operator>>(Pipe_impl<FuncList...>&& p, RHS&& f) -> typename std::enable_if<
-			impl::IsAllTrue<impl::CallableHelper<FuncList>::is_callable...>::value&&
-			impl::CallableHelper<RHS>::is_callable&&
-			impl::ChainAbleHelper<typename ArgsHelper<FuncList...>::tail, RHS>::is_chainable,
+			helper::IsAllTrue<helper::CallableHelper<FuncList>::is_callable...>::value&&
+			helper::CallableHelper<RHS>::is_callable&&
+			helper::ChainAbleHelper<typename helper::ArgsHelper<FuncList...>::tail, RHS>::is_chainable,
 			Pipe_impl<FuncList..., RHS>>::type
 		{
 			auto funcs = std::tuple_cat(std::move(p.funcs), std::forward_as_tuple(std::forward<RHS>(f)));
@@ -322,7 +331,7 @@ namespace chaincall
 
 			template <typename RHS>
 		inline auto operator<<(Pipe_impl<>&& p, RHS&& f) -> typename std::enable_if<
-			impl::CallableHelper<RHS>::is_callable,
+			helper::CallableHelper<RHS>::is_callable,
 			Pipe_impl<RHS>>::type
 		{
 			auto wraped_func = std::forward_as_tuple(std::forward<RHS>(f));
@@ -331,9 +340,9 @@ namespace chaincall
 
 			template <typename RHS, typename... FuncList>
 		inline auto operator<<(Pipe_impl<FuncList...>&& p, RHS&& f) -> typename std::enable_if<
-			impl::IsAllTrue<impl::CallableHelper<FuncList>::is_callable...>::value&&
-			impl::CallableHelper<RHS>::is_callable&&
-			impl::ChainAbleHelper<typename ArgsHelper<FuncList...>::tail, RHS>::is_chainable,
+			helper::IsAllTrue<helper::CallableHelper<FuncList>::is_callable...>::value&&
+			helper::CallableHelper<RHS>::is_callable&&
+			helper::ChainAbleHelper<typename helper::ArgsHelper<FuncList...>::tail, RHS>::is_chainable,
 			Pipe_impl<FuncList..., RHS>>::type
 		{
 			auto funcs = std::tuple_cat(std::move(p.funcs), std::forward_as_tuple(std::forward<RHS>(f)));
@@ -341,15 +350,15 @@ namespace chaincall
 		}
 	} // namespace impl
 
-	template <typename... FuncList, typename Enable = typename impl::ChainAbleHelper<FuncList...>::Enable>
-	inline auto pipe(FuncList &&...fl) ->
-		typename std::enable_if < impl::IsAllTrue<impl::CallableHelper<FuncList>::is_callable...>::value,
-		decltype(impl::Pipe_impl<FuncList...>{std::forward<FuncList>(fl)...}) > ::type
+	template <typename... FuncList>
+	inline auto pipe(FuncList &&...fl) -> typename std::enable_if<
+		helper::ChainAbleHelper<FuncList...>::is_chainable,
+		impl::Pipe_impl<FuncList...>>::type
 	{
 		return impl::Pipe_impl<FuncList...>{std::forward<FuncList>(fl)...};
 	}
 
-	inline impl::Pipe_impl<> pipe()
+		inline impl::Pipe_impl<> pipe()
 	{
 		return impl::Pipe_impl<>{};
 	}
