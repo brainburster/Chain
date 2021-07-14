@@ -163,9 +163,9 @@ namespace chaincall
 		}
 
 		template <typename F, typename... Args, typename Indices = cpp11::make_index_sequence<sizeof...(Args)>>
-		inline auto _apply(F&& f, std::tuple<Args...>&& t) -> decltype(_apply_impl(std::forward<F>(f), std::forward<std::tuple<Args...>>(t), Indices()))
+		inline auto _apply(F&& f, std::tuple<Args...>&& t) -> decltype(_apply_impl(std::forward<F>(f), std::move(t), Indices()))
 		{
-			return _apply_impl(std::forward<F>(f), std::forward<std::tuple<Args...>>(t), Indices{});
+			return _apply_impl(std::forward<F>(f), std::move(t), Indices{});
 		}
 	} // namespace helper
 
@@ -298,7 +298,9 @@ namespace chaincall
 		struct Pipe_impl// : std::enable_if<helper::ChainAbleHelper<FuncList...>::is_chainable, Pipe_impl<>>::type
 		{
 			std::tuple<FuncList...> funcs;
-			Pipe_impl(FuncList &&...fl) : funcs{ std::forward<FuncList>(fl)... } {}
+
+			template<typename... T>
+			Pipe_impl(T &&...fl) : funcs{ std::forward<T>(fl)... } {}
 
 			template <typename T1, typename T2>
 			inline auto __pipe_impl(T1&& t1, T2&& t2) -> decltype(std::forward<T1>(t1) >> std::forward<T2>(t2))
